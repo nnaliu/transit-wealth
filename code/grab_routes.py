@@ -55,6 +55,7 @@ for agency_name, path in ALL_GTFS_PATHS.iteritems():
 		trips_sorted = sorted(route_trips, lambda a, b: cmp(a.GetCountStopTimes(), b.GetCountStopTimes()), reverse=True)
 		stop_ids_in_order = map(lambda st: st.stop_id, trips_sorted[0].GetStopTimes())
 		stop_ids_to_use.update(stop_ids_in_order)
+		print(trips_sorted)
 
 		route_json = {"name":route_name, "stop_ids":stop_ids_in_order}
 		agency_json["routes"][r.route_id] = route_json
@@ -62,6 +63,7 @@ for agency_name, path in ALL_GTFS_PATHS.iteritems():
 	
 	#  Build stop list, look up related info
 	for s in stops:
+		print(s)
 		if not s.stop_id in stop_ids_to_use:
 			continue
 
