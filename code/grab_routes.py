@@ -63,7 +63,6 @@ for agency_name, path in ALL_GTFS_PATHS.iteritems():
 	
 	#  Build stop list, look up related info
 	for s in stops:
-		print(s)
 		if not s.stop_id in stop_ids_to_use:
 			continue
 
