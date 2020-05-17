@@ -237,7 +237,7 @@ var app = new Vue({
 		readMoreStyleObject: {
 			visibility: 'visible'
 		},
-		references: 'Income data was gathered from the US Census, while route information came from city websites. See full list of data sources here. This project was inspired partially by <a href="https://dangrover.github.io/sf-transit-inequality/">Dan Grover and Mike Belfrage\'s project</a>.'
+		references: 'Income data was gathered from the US Census, while route information came from city websites. See full list of data sources <a href="https://github.com/nnaliu/transit-wealth/blob/master/data/Data%20File%20Citations.txt">here</a>. This project was inspired partially by <a href="https://dangrover.github.io/sf-transit-inequality/">Dan Grover and Mike Belfrage\'s project</a>.'
 	},
 	methods: {
 		showQuote: function () {
