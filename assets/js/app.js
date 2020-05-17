@@ -1,216 +1,249 @@
-angular.module('app', []);
+var cityMap = Vue.component('city-map', {
+	props: ['city'],
+	template: `
+		<div id="map">
+			<svg width="400" height="400"></svg>
+		</div>
+	`,
+	data() {
+		return {
+			cityData: {
+				'New York City': {
+					domainMin: 2440,
+    			domainMax: 254204,
+    			cityShapes: './data/nyc/nyc.json',
+    			pathShapes: './data/nyc/nyc_metro_paths.json',
+    			pathColors: './data/nyc/nyc_metro_colors.json',
+    			censusData: './data/nyc/nyc_census.csv'
+				},
+				'Philadelphia': {
+					domainMin: 11000,
+    			domainMax: 160000,
+    			cityShapes: './data/philly/philly.json',
+    			pathShapes: './data/philly/septa_paths.json',
+    			pathColors: '',
+    			censusData: ''
+				},
+				'Boston': {
+					domainMin: 1000,
+    			domainMax: 200000,
+    			cityShapes: './data/boston/boston.json',
+    			pathShapes: './data/boston/routes.json',
+    			pathColors: './data/boston/routes_colors.json',
+    			censusData: ''
+				},
+				'Los Angeles': {
+					domainMin: 1000,
+    			domainMax: 300000,
+    			cityShapes: './data/la/la.json',
+    			pathShapes: './data/la/routes.json',
+    			pathColors: '',
+    			censusData: ''
+				}
+			}
+		}
+	},
+	mounted: function() {
+		var vm = this;
 
-angular.module('app').constant('DATA_SOURCES',
-    ["data/MUNI.json", "data/BART.json", "data/CalTrain.json"]
-    );
+		var width = 600,
+		    height = 500;
+		var colorLight = "#f7fbff",
+		    colorDark = "#08306b";
+		var domainMin = this.cityData[this.city].domainMin,
+		    domainMax = this.cityData[this.city].domainMax
 
-angular.module('app').controller('AppCtrl', ['$scope', 'DATA_SOURCES', function($scope, DATA_SOURCES) {
+		// Fix color
+		var color = d3.scaleSqrt()
+		  .domain([domainMin, domainMax])
+		  .range([colorLight, colorDark]);
 
-    // Load the data for each agency
-    var agencyData = {};
-    var numberAgenciesLoaded = 0;
-    DATA_SOURCES.forEach(function (agencySource, i) {
-        d3.json(agencySource, function(error, agency) {
-            var agencyName = agency['agency_name'];
-            agencyData[agencyName] = agency;
-            // TODO(@dan): rename agency_name in source to just 'name'??
-            agencyData[agencyName].name = agencyName;
-            numberAgenciesLoaded += 1;
-            if (numberAgenciesLoaded === DATA_SOURCES.length) {
-                $scope.agencies = agencyData;
-                $scope.$apply();
-            }
-        });
-    });
+		// Create a unit projection and path generator
+		var projection = d3.geoAlbersUsa();
+		var path = d3.geoPath(projection);
 
-    // Load and show the map of CA
-    d3.json("data/ca-topo.json", function (error, ca_topojson){
-        map_data = ca_topojson;
-        
-        $scope.map_projection = d3.geo.albers().parallels([37.69,37.77]).scale(23000).translate([8000,1020]);
+		var svg = d3.select("#map svg")
+		  .attr("width", width)
+		  .attr("height", height);
 
-        // Draw the coastline of the bay area
-        map_svg = d3.select("#map svg");
-        map_svg.append("path")
-        .attr("class","landmass")
-        .datum(topojson.feature(map_data, map_data.objects.ca))
-        .attr("d", d3.geo.path().projection($scope.map_projection));
-        
-        // Path that will show the route of the line we're looking at:
-        map_svg.append("path").attr("class", "route-line"); 
-    });
+		// tooltips
+		var tooltip = d3.select("body").append("div")
+		  .attr("class", "tooltip")
+		  .style("opacity", "0");
 
-    // Returns whether the given route ID is selected
-    $scope.isRouteSelected = function(routeId){
-        return (routeId == $scope.activeRoute);
-    }
+		// Promises
+		var promises = 
+		  [
+		    d3.json(this.cityData[this.city].cityShapes),
+		    d3.json(this.cityData[this.city].pathShapes),
+		    d3.json(this.cityData[this.city].pathColors),
+		    d3.csv(this.cityData[this.city].censusData)
+		  ]
 
-    // Returns whether the given agency  is selected
-    $scope.isAgencySelected = function(agencyName){
-        return (agencyName == $scope.activeAgency);
-    }
+		const reflect = p => p.then(v => ({v, status: "fulfilled" }),
+                            		e => ({e, status: "rejected" }));
 
-    // Display the Graph for a particular route
-    $scope.displayRoute = function(agencyName, routeId, params) {
-        console.log("Showing %s route %s", agencyName, routeId);
-        
-        console.log("event = %o", $scope);
+		myPromises = Promise.all(promises.map(reflect));
+		myPromises.then(function (data) {
+		  cityShapes = data[0].v;
+		  pathShapes = data[1].v;
+		  if (data[2].status == 'fulfilled') {pathColors = data[2].v;}
+		  if (data[3].status == 'fulfilled') {censusData = data[3].v;}
 
-        $scope.activeRoute = routeId;
-        $scope.activeAgency = agencyName;
+		  if (censusData) {
+		  	dataById = d3.nest()
+			    .key(function(d) { return d.CensusTract; })
+			    .rollup(function(d) { return d[0]; })
+			    .map(censusData);
+		  }
 
-        // grab our data
-        var route = agencyData[agencyName].routes[routeId];
-        var stops = route['stop_ids'].map(function(stop_id){
-            return agencyData[agencyName].stops[stop_id];
-        });
+			var medIncome = function (d) {
+				if (dataById && vm.city == 'New York City')
+	    		return dataById["$" + d.properties.geoid]['IncomePerCap'];
+	    	else if (vm.city == 'Boston')
+	    		return d.properties['2017 median income'];
+	    	else if (vm.city == 'Los Angeles')
+	    		return d.properties['Income_Pct'];
+	    	else
+	    		return d.properties.income;
+	    }
 
-        // find the color to use to draw this route in the graph and the map
-        console.log("params = %o", params);
-        if(params && params["color_override"]){
-            routeColor = params["color_override"];
-        }else{
-            routeColor = agencyData[agencyName].routes[routeId].color;
-        }
-        if (routeColor === undefined) routeColor = "#666";
+	    var censusTractName = function (d) {
+	    	if (vm.city == 'New York City')
+	    		return dataById["$" + d.properties.geoid]['CensusTract'];
+	    	else if (vm.city == 'Boston')
+	    		return d.properties['Name'];
+	    	else if (vm.city == 'Los Angeles')
+	    		return d.properties['TRACTCE10'];
+	    	else
+	    		return d.properties.name;
+	    }
 
-        // dimensions
-        var w = 580,
-        h = 260,
-        hMargin = 65,
-        vMargin = 20,
-        dotRadius = 5,
-        moneyFormat = d3.format(",");
-        yScale = d3.scale.linear().domain([200000, 0]).range([10, h - vMargin]);
-        xScale = d3.scale.linear().domain([0, stops.length]).range([hMargin, w - hMargin]);
-        xAxis = d3.svg.axis().scale(xScale).orient("bottom").ticks(stops.length).tickFormat(function(d, i) {
-            if (stops[i]) {
-                return stops[i].name;
-            }
-        });
-        yAxis = d3.svg.axis().scale(yScale).orient("left").ticks(8).tickFormat(function(d, i) {return "$" + d / 1000 + "K";});
+		  // visualize tracts
+		  var tractsGeo = topojson.feature(cityShapes, cityShapes.objects.tracts);
+		  projection.fitExtent([[0, 0], [width, height]], tractsGeo);
 
-        // Initial setup
-        if(!$scope.didSetUpGraph){
-            graph_container = d3.select("#graph");
-            graph_container.html(""); // Empty what was there initially
-            graph_container.append("h3").attr("class", "route-name"); // Heading at the top
+		  var tracts = svg.append("g")
+		      .attr("class", "tracts")
+		    .selectAll("path")
+		      .data(tractsGeo.features)
+		    .enter().append("path")
+		      .attr("d", path)
+		      .attr("fill", function (d) {
+		        try {
+		        	return color(medIncome(d));
+		        }
+		        catch (e) { return colorLight; }
+		      })
+		      .on("mouseover", function (d) {
+		        tooltip.transition()
+		        .duration(250)
+		        tooltip.style("opacity", "1");
+		        tooltip.html("<p><strong>" + censusTractName(d) + "</strong> </br> Median Income: $" + parseInt(medIncome(d)).toLocaleString('en') + "</p>")
+		        .style("left", (d3.event.pageX + 15) + "px")
+		        .style("top", (d3.event.pageY - 28) + "px");
+		      })
+		      .on("mouseout", function () {
+		        tooltip.transition()
+		        .duration(250)
+		        tooltip.style("opacity", "0");
+		      });
 
-            // The main SVG where we draw stuff
-            svg =  graph_container.append("svg:svg")
-            .attr("width", w)
-            .attr("height", h + 100);
+		  // visualize routes
+		  if (vm.city == 'Philadelphia' || vm.city == 'Los Angeles') {
+		 		for (const value of Object.values(pathShapes.objects)) {
+			    objectGeo = topojson.feature(pathShapes, value)
 
-            graph_container.append("div").attr("id","tooltip"); // Hovering tooltip
-            svg.append("svg:path").attr("class", "data-line"); // Graph line
-            svg.append("g").attr("class","data-dots"); // Graph dots
+			    if (objectGeo.features.length > 100) { continue; }
 
-            svg.append("text")
-            .attr("class", "y-axis-label")
-            .text("Median Household Income")
-            .attr("text-anchor", "middle")
-            .attr("transform", "translate(12,"+((h/2)-(vMargin/2))+"), rotate(-90)");
+			    svg.append("g")
+			      .attr("class", "lines")
+			    .selectAll("path")
+			      .data(objectGeo.features)
+			    .enter().append("path")
+			      .attr("d", path)
+			      .attr("stroke-width", "1px")
+			      .attr("fill", "none")
+			      .attr("stroke", "green");
+				}
+			}
+		  else {
+			  var pathsGeo = topojson.feature(pathShapes, pathShapes.objects.routes);
+			  svg.append("g")
+			      .attr("class", "lines")
+			    .selectAll("path")
+			      .data(pathsGeo.features)
+			    .enter().append("path")
+			      .attr("d", path)
+			      .attr("stroke-width", "1px")
+			      .attr("fill", "none")
+			      .attr("stroke", function (d) {
+			      	if (pathColors) {
+			      		line_id = vm.city == 'New York City' ? d.properties.lines[0] : d.properties.id;
+			      		color = pathColors["colors"][line_id];
+			      		return color ? color : "#040404";
+			      	}
+			      	else { return "#040404"; }
+			      });
+		  }
+		})
+		.catch( function (error) {
+		  console.log(error);
+		});
+	}
+})
 
-            $scope.didSetUpGraph = true;
-        }
+Vue.component('city-tabs', {
+	template: `
+		<div>
+			<div>
+				<h2>Cities</h2>
+				<ul class="cities-list">
+					<li v-for="city in cities"
+							v-bind:class="{ activeCity: selectedCity == city }"
+							@click="selectedCity = city; forceRerender()">
+						{{ city }} </li>
+				</ul>
+			</div>
 
-        var svg = d3.select("#graph").selectAll("svg");
-        var heading = d3.select("#graph").selectAll("h3");
-        var tooltip = d3.selectAll("div#tooltip");
-        var data_path = d3.selectAll("path.data-line");
-        var data_dots_group = d3.selectAll("g.data-dots");
-        var map_svg = d3.select("#map svg");
+			<city-map class="city-map" v-bind:city="selectedCity" :key="componentKey"></city-map>
+		</div>
+	`,
+	data() {
+		return {
+			cities: ['New York City', 'Boston', 'Philadelphia', 'Los Angeles'],
+			selectedCity: 'New York City', // set from @click
+			componentKey: 0,
+		}
+	},
+	methods: {
+		forceRerender() {
+			this.componentKey += 1;
+		}
+	}
+})
 
-        // Heading
-        heading.html(agencyName+" <small>"+route.name+"</small>");
-
-        // Axes
-        svg.selectAll("g.axis").remove();
-
-         // X axis elements
-         svg.append("g")
-         .attr("class", "axis x-axis")
-         .attr("transform", "translate(0," + (h - vMargin) + ")")
-         .call(xAxis)
-         .selectAll("text")
-         .style("text-anchor", "end")
-         .attr("dy", "-.5em")
-         .attr('dx', "-1em")
-         .attr("transform", "rotate(-80)")
-         .call(xAxis);
-
-        // Y axis elements
-        svg.append("g")
-        .attr("class", "axis y-axis")
-        .attr("transform", "translate(" + hMargin + ",0)")
-        .call(yAxis);
-
-        // Data line
-        var line = d3.svg.line()
-        .interpolate("cardinal")
-        .x(function(d, i) { return xScale(i);})
-        .y(function(d, i) { return yScale(d.median_income);});
-
-        data_path.transition()
-        .attr("d",line(stops))
-        .attr("stroke", routeColor);
-
-        // Dots for stops
-        data_dots_group.selectAll("circle").remove();
-        new_dots = data_dots_group.selectAll("circle")
-        .data(stops)
-        .enter()
-        .append("circle")
-        .attr("fill", routeColor)
-        .attr("stroke", "white")
-        .transition()
-        .attr("cx", function(d, i) {return xScale(i);})
-        .attr("cy", function(d, i) {return yScale(d.median_income);})
-        .attr("r", dotRadius);
-
-        data_dots_group.selectAll("circle").on("mouseover", function(d, i) {
-            stop = stops[i];
-            tooltip.html(function() {
-                return "<strong>" + stops[i].name + "</strong><br/>" +
-                "Median income: $" + moneyFormat(stop.median_income) + "<br/>" +
-                "Census Tract: " + stop.state_fips + stop.county_fips + stop.tract_fips;
-            })
-            .style("left", (d3.event.pageX) + "px")
-            .style("top", (d3.event.pageY) + "px");
-
-            tooltip.style("visibility", "visible");
-            this.setAttribute("r", 10);
-
-            // show a map marker
-            marker_coords = $scope.map_projection([stop.lon, stop.lat]);
-            map_svg.select("circle.stop-marker").remove();
-            circle = map_svg.append("circle")
-            .attr("class", "stop-marker")
-            .attr("r", 4)
-            .attr("fill",routeColor)
-            .attr("cx",marker_coords[0])
-            .attr("cy",marker_coords[1]);
-        })
-        .on("mousemove", function() {
-            tooltip.style("top", (event.pageY - $("body").scrollTop() - 10) + "px")
-            .style("left", (event.pageX + 6) + "px");
-        })
-        .on("mouseout", function() {
-            tooltip.style("visibility", "hidden");
-            this.setAttribute("r", dotRadius);
-            map_svg.select("circle.stop-marker").remove();
-        });
-
-        // Update the map to show this route
-        var route_line = d3.svg.line().x(function(d){return d[0];}).y(function(d){return d[1];}).interpolate("cardinal");
-
-        // Project lat->lng into coordinates to display on the map
-        positions = stops.map(function(stop){return $scope.map_projection([stop.lon, stop.lat]);});
-
-        map_svg.select("path.route-line")
-        .transition()
-        .attr("d", route_line(positions))
-        .attr("stroke", routeColor);
-
-    };
-}]);
+var app = new Vue({
+  el: '#app',
+  data: {
+    title: 'How do transportation networks affect wealth distribution in major cities?',
+    byline: 'AN EXPLORATION, BY <a href="https://github.com/nnaliu">@NNALIU</a>',
+    description: 'I’m fascinated by how our cities’ transportation networks affect the way we live. Many transportation networks are more than 50 years old, but they continue to affect the way our cities develop, where people choose to live, and influence our quality of life. In fact, commuting time has emerged as the single strongest factor in the odds of escaping poverty (<a href=https://www.nytimes.com/2015/05/07/upshot/transportation-emerges-as-crucial-to-escaping-poverty.html>NYT 2015</a>). This project is inspirerd by a paragraph in Professor Edward Glaeser’s book, <a href="https://www.amazon.com/Triumph-City-Greatest-Invention-Healthier/dp/0143120549">Triumph of the City: How Our Greatest Invention Makes Us Richer, Smarter, Greener, Healthier, and Happier</a>.',
+    quote: 'The fight against the terrible segregation that remains in American cities is so difficult, in part, because there are economic forces that pull the rich and poor apart... All forms of travel involve two types of cost: money and time... When a single transportation mode, like driving or taking the subway, dominates, then the rich live closer to the city center and the poor live farther away. But when there are multiple modes of transit, then the poor often live closer. New York, Boston, and Philadelphia have four transit and income zones: an inner zone where the rich commute by foot or publico transit, a second zone where the poor commute by public transit, a third zone where the rich drive, and an outer zone comprising distant areas where less wealthy people live and drive... Newer cities, like Los Angeles, are far less oriented toward public transit and as a result have no inner walking or public-transit zone used by the wealthy. The prosperous all drive, and there are just three zones: an inner area where the poor take public transit, a middle area where the rich drive, and an outer area where the less wealthy have horrendous commutes.',
+		quoteStyleObject: {
+			overflow: 'hidden',
+			// maxHeight: '200px'
+		},
+		readMoreStyleObject: {
+			visibility: 'visible'
+		},
+		references: 'Income data was gathered from the US Census, while route information came from city websites. See full list of data sources here. This project was inspired partially by <a href="https://dangrover.github.io/sf-transit-inequality/">Dan Grover and Mike Belfrage\'s project</a>.'
+	},
+	methods: {
+		showQuote: function () {
+			this.quoteStyleObject.overflow = 'visible';
+			this.quoteStyleObject.maxHeight = '120px';
+			this.readMoreStyleObject.visibility = 'hidden';
+		}
+	}
+});

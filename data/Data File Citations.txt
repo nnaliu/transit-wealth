@@ -1,0 +1,18 @@
+Data File Citations
+
+*** New York City ***
+NYC Tracts: ???
+Metro Routes: ???
+New York Income: https://github.com/zzhang83/New-York-City-Census-Data-Analysis/blob/master/nyc_census.csv
+
+*** Boston ***
+Boston Tracts and Income: https://github.com/aberke/income-race-bikes
+MBTA Lines: https://github.com/singingwolfboy/MBTA-GeoJSON
+
+*** Philadelphia ***
+Philadelphia Tracts: https://www.opendataphilly.org/dataset?res_format=geojson
+Septa Lines: http://septaopendata-septa.opendata.arcgis.com/datasets/
+
+*** Los Angeles ***
+Los Angeles Tracts and Income: https://www.lacounts.org/dataset/median-household-income-2016/resource/abe0839e-48b8-4db4-a2fd-fc7342252638
+Routes: https://github.com/datadesk/lametro-maps
