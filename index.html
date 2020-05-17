@@ -31,10 +31,28 @@
     <p><b>References</b></p>
     <p class="references" v-html="references"></p>
     <a class="twitter-share-button"
-       href="https://twitter.com/intent/tweet?text=How do transportation networks affect wealth distribution?&via=@nnaliu">
+       href="https://twitter.com/intent/tweet?url=https://nnaliu.github.io/transit-wealth/&text=How do transportation networks affect wealth distribution?&via=@nnaliu">
         Tweet</a>
   </div>
 
   <script src="./assets/js/app.js"></script>
+  
+  <!-- Twitter Script -->
+  <script>window.twttr = (function(d, s, id) {
+    var js, fjs = d.getElementsByTagName(s)[0],
+      t = window.twttr || {};
+    if (d.getElementById(id)) return t;
+    js = d.createElement(s);
+    js.id = id;
+    js.src = "https://platform.twitter.com/widgets.js";
+    fjs.parentNode.insertBefore(js, fjs);
+
+    t._e = [];
+    t.ready = function(f) {
+      t._e.push(f);
+    };
+
+    return t;
+  }(document, "script", "twitter-wjs"));</script>
 </body>
 </html>
